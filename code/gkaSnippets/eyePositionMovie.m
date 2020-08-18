@@ -1,4 +1,6 @@
 
+% Obtain the cleaned data
+cleanVq;
 
 % These are the fields to process
 fieldNames = {'tfMRI_MOVIE_AP_run01','tfMRI_MOVIE_AP_run02','tfMRI_MOVIE_PA_run03','tfMRI_MOVIE_PA_run04'};
@@ -20,6 +22,10 @@ symbolRadius = @(relRad) (relRad - min(mean(vqCleaned(:,3,:)))) * 30;
 % Set up the video in
 v = VideoReader('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_materials/StimulusFiles/PixarShorts.mov');
 
+% Define the filename out stem
+dropboxBaseDir = getpref('movieGazeTOMEAnalysis','dropboxBaseDir');
+fileOutStem = fullfile(dropboxBaseDir,'TOME_analysis','movieGazeTrack');
+
 % Loop over the fieldNames
 for ff = 1:length(fieldNames)
     
@@ -34,7 +40,7 @@ for ff = 1:length(fieldNames)
     colors = getDistinguishableColors(nSubs).*255;
     
     % Set up the video out
-    fileNameOut = sprintf('/Users/aguirre/Desktop/GazeTrack_%02d.avi',ff);
+    fileNameOut = fullfile(fileOutStem,[fieldNames{ff} '_gazeTrack.avi']);
     vo = VideoWriter(fileNameOut);
     
     % Set the frame rate for the output
