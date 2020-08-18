@@ -6,8 +6,8 @@ fieldNames = {'tfMRI_MOVIE_AP_run01','tfMRI_MOVIE_AP_run02','tfMRI_MOVIE_PA_run0
 % The movie start times (in seconds) for each of the acquisitions
 movieStartTimes = [1880, 2216, 892, 1228];
 
-% Account for a half-second phase shift that appears to be present between
-% the eye tracking and the movie
+% Account for a quarter-second phase shift that appears to be present
+% between the eye tracking and the movie
 phaseCorrect = -0.25;
 
 % How long a trail (in frames) do we leave behind each tracking circle?

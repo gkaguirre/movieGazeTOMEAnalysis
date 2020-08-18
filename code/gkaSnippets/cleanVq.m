@@ -1,9 +1,16 @@
 
+%% Settings
+
+% Do we wish to impute missing values using the mean measure?
+imputeFlag = false;
+
 % Load the gaze data file from my local disk
 load('/Users/aguirre/Documents/MATLAB/projects/movieGazeTOMEAnalysis/data/gazeData.mat')
+%load('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_processing/session2_spatialStimuli/pupilDataQAPlots_eyePose_RETINO_July2020/gazeData.mat')
 
 % These are the fields to process
 fieldNames = {'tfMRI_MOVIE_AP_run01','tfMRI_MOVIE_AP_run02','tfMRI_MOVIE_PA_run03','tfMRI_MOVIE_PA_run04'};
+%fieldNames = {'tfMRI_RETINO_PA_run01','tfMRI_RETINO_PA_run02','tfMRI_RETINO_AP_run03','tfMRI_RETINO_AP_run04'};
 
 % Loop over the fieldNames
 for ff = 1:length(fieldNames)
@@ -21,14 +28,19 @@ for ff = 1:length(fieldNames)
     vqNaN = isnan(vq);
     
     % This is the mean across all subjects / time points for each measure
-    vqMeanVal = squeeze(nanmean(nanmean(vq),3));
+    % during the scanning period
+    inScan = gazeData.timebase>=0;
+    vqMeanVal = squeeze(nanmean(nanmean(vq(:,:,inScan)),3));
     
     % These are the mean centered vectors
     vqCentered = vq - nanmean(vq,3);
     
     % Find the phase shift in the first measure that best aligns all
     % vectors
-%     frameShifts = -60:60;
+%     frameShifts = 0;
+%     cc = [];
+%     cr = [];
+%     corVals = [];
 %     for xx=1:nSubs
 %         for yy = 1:nSubs
 %             vecA = squeeze(vqCentered(xx,1,:));
@@ -39,7 +51,7 @@ for ff = 1:length(fieldNames)
 %             cr(xx,yy) = max(corVals);
 %             cc(xx,yy) = frameShifts(find(corVals==max(corVals),1));
 %         end
-%     end
+%     end    
 %     cc(find(eye(nSubs,nSubs)))=nan;
 %     cr(find(eye(nSubs,nSubs)))=nan;
 %     figure
@@ -76,16 +88,26 @@ for ff = 1:length(fieldNames)
         vqCenteredScaledSD(mm,:) = squeeze(nanstd(vqCenteredScaled(:,mm,:)))';
     end
     
-    % Create a cleaned vq matrix that has "imputed" missing values with the
-    % mean across subject value, and adds back in the mean
+    % Create a cleaned vq matrix that might have "imputed" missing values
+    % with the mean across subject value, and adds back in the mean
     vqCleaned = vqCenteredScaled;
     for mm = 1:nMeasures
         for ii = 1:nSubs
-            badIdx = isnan(vqCenteredScaled(ii,mm,:));
-            vqCleaned(ii,mm,badIdx) = vqMeanVec(mm,badIdx);
             
-            % add back in the mean to the whole vector
-            vqCleaned(ii,mm,:) = vqCleaned(ii,mm,:) + vqMeanVal(mm);
+            if imputeFlag
+                badIdx = isnan(vqCenteredScaled(ii,mm,:));
+                vqCleaned(ii,mm,badIdx) = vqMeanVec(mm,badIdx);
+            end
+            
+            % Add back in the mean to the whole vector if we are not
+            % dealing with the RETINO data. If it is the retino data, mean
+            % center the vector, following the assumption that subjects on
+            % the whole fixated the center of the screen
+            if contains(fieldNames{1},'RETINO') && mm ~= nMeasures                
+                vqCleaned(ii,mm,:) = vqCleaned(ii,mm,:) - nanmean(vqCleaned(ii,mm,:));
+            else
+                vqCleaned(ii,mm,:) = vqCleaned(ii,mm,:) + vqMeanVal(mm);
+            end
         end
     end
     
