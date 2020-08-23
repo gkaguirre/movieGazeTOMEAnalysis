@@ -37,36 +37,57 @@ for ff = 1:length(fieldNames)
     % This is the mean across all subjects / time points for each measure
     % during the scanning period, weighted by the data quality
     inScan = gazeData.timebase>=0;
-    vqMeanVal = squeeze(nanmean(wnanmean(vq(:,:,inScan),repmat(w,1,size(vq,2),size(vq,3)),1),3));
+    vqMeanValBySubject = nanmean(vq(:,:,inScan),3);
+    vqMeanValByMeasure = squeeze(nanmean(wnanmean(vq(:,:,inScan),repmat(w,1,size(vq,2),size(vq,3)),1),3));
     
     % These are the mean centered vectors
     vqCentered = vq - nanmean(vq,3);
     
+    % Convert the stop radius to proportion change
+    for ii = 1:nSubs
+        vqCentered(ii,nMeasures,:) = vqCentered(ii,nMeasures,:) ./ vqMeanValBySubject(ii,nMeasures);
+    end
+    
     % Find the phase shift in the first measure that best aligns all
     % vectors
-    %     frameShifts = 0;
-    %     cc = [];
-    %     cr = [];
-    %     corVals = [];
-    %     for xx=1:nSubs
-    %         for yy = 1:nSubs
-    %             vecA = squeeze(vqCentered(xx,1,:));
-    %             vecB = squeeze(vqCentered(yy,1,:));
-    %             for tt = 1:length(frameShifts)
-    %                 corVals(tt) = corr(vecA,circshift(vecB,frameShifts(tt)),'Rows','pairwise');
-    %             end
-    %             cr(xx,yy) = max(corVals);
-    %             cc(xx,yy) = frameShifts(find(corVals==max(corVals),1));
-    %         end
-    %     end
-    %     cc(find(eye(nSubs,nSubs)))=nan;
-    %     cr(find(eye(nSubs,nSubs)))=nan;
-    %     figure
-    %     subplot(1,2,1)
-    %     imagesc(cr)
-    %     subplot(1,2,2)
-    %     imagesc(cc)
-    %     nanmean(nanmean(cr))
+    frameSearch = -60:60;
+    cc = nan(nSubs,nSubs);
+    cr = nan(nSubs,nSubs);
+    corVals = [];
+    for xx=1:nSubs
+        for yy = 1:nSubs
+            if xx==yy
+                continue
+            end
+            vecA = squeeze(vqCentered(xx,1,:));
+            vecB = squeeze(vqCentered(yy,1,:));
+            for tt = 1:length(frameSearch)
+                corVals(tt) = corr(vecA,circshift(vecB,frameSearch(tt)),'Rows','pairwise');
+            end
+            cr(xx,yy) = max(corVals);
+            cc(xx,yy) = frameSearch(find(corVals==max(corVals),1));
+        end        
+    end
+
+    % Apply the shift to temporally align the subjects
+    frameShifts = [];
+    for xx=1:nSubs
+        for mm=1:nMeasures
+            vec = squeeze(vqCentered(xx,1,:));
+            frameShifts(xx) = round(nanmean(cc(:,xx)));
+            vqCentered(xx,1,:)=circshift(vec,frameShifts(xx));
+        end
+    end
+    
+    % Store the shift values
+    gazeData.(fieldNames{ff}).frameShifts = frameShifts;
+    
+%     figure
+%     subplot(1,2,1)
+%     imagesc(cr)
+%     subplot(1,2,2)
+%     imagesc(cc)
+%     nanmean(nanmean(cr))
     
     % Correct for scaling gaze differences between subjects
     if affineCorrectFlag
@@ -76,6 +97,7 @@ for ff = 1:length(fieldNames)
         vqMeanVec = squeeze(wnanmean(vqCentered,repmat(w,1,size(vq,2),size(vq,3)),1));
         
         % Find the slope that relates each individual subject to the mean vector
+        slopes = [];
         for mm = 1:nMeasures
             for ii = 1:nSubs
                 goodIdx = ~isnan(vqCentered(ii,mm,:));
@@ -87,6 +109,7 @@ for ff = 1:length(fieldNames)
         end
         
         % Now loop through and adjust each subject's data
+        slopes = [];
         vqCenteredScaled = nan(size(vqCentered));
         for mm = 1:nMeasures
             for ii = 1:nSubs
@@ -98,13 +121,17 @@ for ff = 1:length(fieldNames)
             end
             vqCenteredScaledSD(mm,:) = squeeze(nanstd(vqCenteredScaled(:,mm,:)))';
         end
+        
+        % Store the slopes value
+        gazeData.(fieldNames{ff}).slopes = slopes;
 
+        % Update the vqCleaned variable
         vqCleaned = vqCenteredScaled;
 
     else
         vqCleaned = vqCentered;
     end
-    
+        
     % Create a cleaned vq matrix that might have "imputed" missing values
     % with the mean across subject value, and adds back in the mean
     for mm = 1:nMeasures
@@ -115,14 +142,20 @@ for ff = 1:length(fieldNames)
                 vqCleaned(ii,mm,badIdx) = vqMeanVec(mm,badIdx);
             end
             
-            % Add back in the mean to the whole vector if we are not
-            % dealing with the RETINO data. If it is the retino data, mean
-            % center the vector, following the assumption that subjects on
-            % the whole fixated the center of the screen
-            if contains(fieldNames{1},'RETINO') && mm ~= nMeasures
-                vqCleaned(ii,mm,:) = vqCleaned(ii,mm,:) - nanmean(vqCleaned(ii,mm,:));
-            else
-                vqCleaned(ii,mm,:) = vqCleaned(ii,mm,:) + vqMeanVal(mm);
+            % Handle the mean for the non-pupil measures.
+            if mm~=nMeasures
+                switch fieldNames{1}
+                    case 'RETINO'
+                        % If we are dealing with the RETINO data mean
+                        % center the vector, following the assumption that
+                        % subjects on the whole fixated the center of the
+                        % screen
+                        vqCleaned(ii,mm,:) = vqCleaned(ii,mm,:) - nanmean(vqCleaned(ii,mm,:));
+                    case 'MOVIE'
+                        % For the MOVIE data, we assume that everyone tends
+                        % to look in the same place
+                        vqCleaned(ii,mm,:) = vqCleaned(ii,mm,:) + vqMeanValByMeasure(mm);
+                end
             end
         end
     end
