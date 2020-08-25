@@ -3,7 +3,7 @@
 
 % Do we wish to correct for scaling differences between subjects in gaze
 % amplitude?
-affineCorrectFlag = true;
+affineCorrectFlag = false;
 
 % Do we wish to impute missing values using the mean measure?
 imputeFlag = false;
@@ -50,7 +50,7 @@ for ff = 1:length(fieldNames)
     
     % Find the phase shift in the first measure that best aligns all
     % vectors
-    frameSearch = -60:60;
+    frameSearch = -20:20;
     cc = nan(nSubs,nSubs);
     cr = nan(nSubs,nSubs);
     corVals = [];
@@ -66,9 +66,9 @@ for ff = 1:length(fieldNames)
             end
             cr(xx,yy) = max(corVals);
             cc(xx,yy) = frameSearch(find(corVals==max(corVals),1));
-        end        
+        end
     end
-
+    
     % Apply the shift to temporally align the subjects
     frameShifts = [];
     for xx=1:nSubs
@@ -82,19 +82,16 @@ for ff = 1:length(fieldNames)
     % Store the shift values
     gazeData.(fieldNames{ff}).frameShifts = frameShifts;
     
-%     figure
-%     subplot(1,2,1)
-%     imagesc(cr)
-%     subplot(1,2,2)
-%     imagesc(cc)
-%     nanmean(nanmean(cr))
-    
     % Correct for scaling gaze differences between subjects
     if affineCorrectFlag
         
         % This is the mean vector across all subjects for each measure,
         % weighted by the data quality
         vqMeanVec = squeeze(wnanmean(vqCentered,repmat(w,1,size(vq,2),size(vq,3)),1));
+        
+        % Create a variable to hold the slope data, indexed by subject ID
+        % number
+        slopeByID = nan(nMeasures,45);
         
         % Find the slope that relates each individual subject to the mean vector
         slopes = [];
@@ -108,7 +105,8 @@ for ff = 1:length(fieldNames)
             vqMeanVec(mm,:) = vqMeanVec(mm,:) ./ mean(slopes(mm,:));
         end
         
-        % Now loop through and adjust each subject's data
+        % Now loop through and adjust each subject's gaze data (but not
+        % stop radius)
         slopes = [];
         vqCenteredScaled = nan(size(vqCentered));
         for mm = 1:nMeasures
@@ -117,21 +115,27 @@ for ff = 1:length(fieldNames)
                 % Find the slope that relates each individual subject to the mean vector
                 p = polyfit(squeeze(vqCentered(ii,mm,goodIdx)),vqMeanVec(mm,goodIdx)', 1);
                 slopes(mm,ii) = p(1);
-                vqCenteredScaled(ii,mm,goodIdx) = vqCentered(ii,mm,goodIdx).*p(1);
+                slopeByID(mm,str2double(gazeData.(fieldNames{ff}).nameTags{ii}(1:2))) = p(1);
+                if mm == nMeasures
+                    vqCenteredScaled(ii,mm,goodIdx) = vqCentered(ii,mm,goodIdx).*1;
+                else
+                    vqCenteredScaled(ii,mm,goodIdx) = vqCentered(ii,mm,goodIdx).*p(1);
+                end
             end
             vqCenteredScaledSD(mm,:) = squeeze(nanstd(vqCenteredScaled(:,mm,:)))';
         end
         
         % Store the slopes value
         gazeData.(fieldNames{ff}).slopes = slopes;
-
+        gazeData.(fieldNames{ff}).slopeByID = slopeByID;
+        
         % Update the vqCleaned variable
         vqCleaned = vqCenteredScaled;
-
+        
     else
         vqCleaned = vqCentered;
     end
-        
+    
     % Create a cleaned vq matrix that might have "imputed" missing values
     % with the mean across subject value, and adds back in the mean
     for mm = 1:nMeasures
@@ -163,6 +167,17 @@ for ff = 1:length(fieldNames)
     % Store the vqCleaned matrix back in the gazeData structure
     gazeData.(fieldNames{ff}).vqCleaned = vqCleaned;
     
+    % Find a set of high-agreement frames that may be used for gaze
+    % calibration for other subjects
+    [frameSet, gazeTargets, gazeDisagreement] = bestByBin(vqCleaned,w);
+    gazeData.(fieldNames{ff}).synthTargets.frameSet = frameSet;
+    gazeData.(fieldNames{ff}).synthTargets.gazeTargets = gazeTargets;
+    gazeData.(fieldNames{ff}).synthTargets.gazeDisagreement = gazeDisagreement;
+    
+    % Create a display of the synthesized targets
+    figure
+    plot(gazeTargets(1,:),gazeTargets(2,:),'ok');
+    
     % Create a display of the data
     figure
     titles={'x gaze','y gaze','stop radius','nans'};
@@ -178,6 +193,11 @@ for ff = 1:length(fieldNames)
     title(titles{mm+1});
     
 end
+
+% Save the cleaned data
+save('/Users/aguirre/Documents/MATLAB/projects/movieGazeTOMEAnalysis/data/gazeData_cleaned.mat','gazeData')
+
+
 
 
 
@@ -203,5 +223,56 @@ if nargin==2
 end
 
 y = nansum(w.*x,dim)./sum(w,dim);
+
+end
+
+
+function [frameSet, gazeTargets, gazeDisagreement] = bestByBin(vqCleaned, w)
+
+nBinsPerDimension = 9;
+minFramesPerBin = 9;
+
+% Find the degree of disagreement across subjects in gaze location for
+% each frame
+vqMeanCleanedVec = squeeze(wnanmean(vqCleaned,repmat(w,1,size(vqCleaned,2),size(vqCleaned,3)),1));
+gazeDisagreement = nanmean(sqrt( ...
+    (squeeze(vqCleaned(:,1,:)) - squeeze(vqMeanCleanedVec(1,:))).^2 + ...
+    (squeeze(vqCleaned(:,2,:)) - squeeze(vqMeanCleanedVec(2,:))).^2 ));
+
+% First we divide the ellipse centers amongst a set of 2D bins across
+% image space.
+[gazeCenterCounts,~,~,binXidx,binYidx] = ...
+    histcounts2(vqMeanCleanedVec(1,:),vqMeanCleanedVec(2,:),nBinsPerDimension);
+
+% Anonymous functions for row and column identity given array position
+rowIdx = @(b) fix( (b-1) ./ (size(gazeCenterCounts,2)) ) +1;
+colIdx = @(b) 1+mod(b-1,size(gazeCenterCounts,2));
+
+% Create a cell array of index positions corresponding to each of the
+% 2D bins
+idxByBinPosition = ...
+    arrayfun(@(b) find( (binXidx==rowIdx(b)) .* (binYidx==colIdx(b)) ),1:1:numel(gazeCenterCounts),'UniformOutput',false);
+
+% Identify the bins that have a sufficient number of frames to bother with
+% looking for the best one
+filledBinIdx = find(cellfun(@(x) size(x,2)>minFramesPerBin, idxByBinPosition));
+
+% Identify the frame in each bin with the lowest gazeDisagreement
+[~, idxMinGazeDisagreementWithinBin] = arrayfun(@(x) nanmin(gazeDisagreement(idxByBinPosition{x})), filledBinIdx, 'UniformOutput', false);
+returnTheMin = @(binContents, x)  binContents(idxMinGazeDisagreementWithinBin{x});
+frameSet = cellfun(@(x) returnTheMin(idxByBinPosition{filledBinIdx(x)},x),num2cell(1:1:length(filledBinIdx)));
+
+% Keep the 9 frames with the lowest gaze disagreement
+[~, sortIdx] = sort(gazeDisagreement(frameSet));
+frameSet = frameSet(sortIdx(1:9));
+
+% Order the frameSet in time
+frameSet = sort(frameSet);
+
+% Create a set of gaze targets
+gazeTargets = vqMeanCleanedVec(1:2,frameSet);
+
+% Trim the disagreement down to just the frameSet
+gazeDisagreement = gazeDisagreement(frameSet);
 
 end
