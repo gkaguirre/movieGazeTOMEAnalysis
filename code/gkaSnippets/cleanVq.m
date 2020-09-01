@@ -10,11 +10,12 @@ imputeFlag = false;
 
 % Load the gaze data file from my local disk
 %load('/Users/aguirre/Documents/MATLAB/projects/movieGazeTOMEAnalysis/data/gazeData.mat')
-load('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_processing/session2_spatialStimuli/pupilDataQAPlots_eyePose_MOVIE_July2020/gazeData.mat')
+%load('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_processing/session2_spatialStimuli/pupilDataQAPlots_eyePose_MOVIE_July2020/gazeData.mat')
+load('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_processing/session2_spatialStimuli/pupilDataQAPlots_eyePose_RETINO_July2020/gazeData.mat')
 
 % These are the fields to process
-fieldNames = {'tfMRI_MOVIE_AP_run01','tfMRI_MOVIE_AP_run02','tfMRI_MOVIE_PA_run03','tfMRI_MOVIE_PA_run04'};
-%fieldNames = {'tfMRI_RETINO_PA_run01','tfMRI_RETINO_PA_run02','tfMRI_RETINO_AP_run03','tfMRI_RETINO_AP_run04'};
+%fieldNames = {'tfMRI_MOVIE_AP_run01','tfMRI_MOVIE_AP_run02','tfMRI_MOVIE_PA_run03','tfMRI_MOVIE_PA_run04'};
+fieldNames = {'tfMRI_RETINO_PA_run01','tfMRI_RETINO_PA_run02','tfMRI_RETINO_AP_run03','tfMRI_RETINO_AP_run04'};
 
 % Loop over the fieldNames
 for ff = 1:length(fieldNames)
@@ -195,7 +196,8 @@ for ff = 1:length(fieldNames)
 end
 
 % Save the cleaned data
-save('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_processing/session2_spatialStimuli/pupilDataQAPlots_eyePose_MOVIE_July2020/gazeData_cleaned.mat','gazeData')
+%save('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_processing/session2_spatialStimuli/pupilDataQAPlots_eyePose_MOVIE_July2020/gazeData_cleaned.mat','gazeData')
+save('/Users/aguirre/Dropbox (Aguirre-Brainard Lab)/TOME_processing/session2_spatialStimuli/pupilDataQAPlots_eyePose_RETINO_July2020/gazeData_cleaned.mat','gazeData')
 
 
 
